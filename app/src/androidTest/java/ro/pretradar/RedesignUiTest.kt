@@ -103,12 +103,12 @@ class RedesignUiTest {
 
     @Test fun themeChoicePersistsAcrossTheRedesignedScreens() {
         navigate("SETTINGS", "settings-list")
-        reach("settings-list", hasTestTag("theme-DARK")).performClick().assertIsSelected()
+        select("settings-list", "theme-DARK")
         navigate("SEARCH", "home")
         navigate("HOT", "hot-list")
         navigate("SETTINGS", "settings-list")
         reach("settings-list", hasTestTag("theme-DARK")).assertIsSelected()
-        reach("settings-list", hasTestTag("theme-LIGHT")).performClick().assertIsSelected()
+        select("settings-list", "theme-LIGHT")
         navigate("SEARCH", "home")
         navigate("SETTINGS", "settings-list")
         reach("settings-list", hasTestTag("theme-LIGHT")).assertIsSelected()
@@ -132,11 +132,11 @@ class RedesignUiTest {
     /** Also exercises overflow paths when the emulator uses larger text or a compact width. */
     @Test fun settingsAndHotControlsRemainReachableWhenContentNeedsToScroll() {
         navigate("SETTINGS", "settings-list")
-        reach("settings-list", hasTestTag("theme-DARK")).performClick().assertIsSelected()
-        reach("settings-list", hasTestTag("theme-LIGHT")).performClick().assertIsSelected()
-        reach("settings-list", hasTestTag("interval-24")).performClick().assertIsSelected()
+        select("settings-list", "theme-DARK")
+        select("settings-list", "theme-LIGHT")
+        select("settings-list", "interval-24")
         navigate("HOT", "hot-list")
-        reach("hot-list", hasTestTag("hot-preset-70")).performClick().assertIsSelected()
+        select("hot-list", "hot-preset-70")
         reach("hot-list", hasTestTag("hot-choose-category")).performClick()
         reach("hot-categories", hasTestTag("hot-category-PHONES")).performClick()
         visibleScreen("hot-list")
@@ -220,8 +220,28 @@ class RedesignUiTest {
     }
 
     private fun reach(list: String, matcher: SemanticsMatcher): SemanticsNodeInteraction {
-        compose.onNodeWithTag(list).performScrollToNode(matcher)
-        return compose.onNode(matcher).performScrollTo()
+        val container = compose.onNodeWithTag(list)
+        container.performScrollToNode(matcher)
+        val node = compose.onNode(matcher).performScrollTo()
+        val viewport = container.fetchSemanticsNode().boundsInRoot
+        val layout = node.fetchSemanticsNode()
+        val height = layout.size.height.toFloat()
+        val centerY = layout.positionInRoot.y + height / 2
+        if (centerY > viewport.bottom - height || centerY < viewport.top + height) {
+            container.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.ScrollBy) { scroll ->
+                scroll(0f, centerY - viewport.center.y)
+            }
+        }
+        return node
+    }
+
+    private fun select(list: String, tag: String) {
+        reach(list, hasTestTag(tag)).performClick()
+        // DataStore persists asynchronously; Compose idleness does not imply the write is complete.
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(hasTestTag(tag) and isSelected()).fetchSemanticsNodes().size == 1
+        }
+        compose.onNodeWithTag(tag).assertIsSelected()
     }
 
     private fun visibleScreen(tag: String) {
